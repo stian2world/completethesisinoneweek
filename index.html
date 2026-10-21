@@ -1,0 +1,1035 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Office Cloud</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* 布局：全屏画布 + 漂浮的半透明控件。一种固定的外观（白天 → 阴天 → 夜晚由画布自己变化） */
+:root{
+  --ink:#1F2733; --muted:#5E6B7A; --card:rgba(255,255,255,.74); --line:rgba(31,39,51,.12);
+  --accent:#2F4A8A; --good:#3E9A74;
+  --font-ui:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-display:"Fredoka","Noto Sans SC","PingFang SC",system-ui,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;overflow:hidden;background:#E4ECF3;color:var(--ink);font-family:var(--font-ui);font-size:14px}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#stage:active{cursor:grabbing}
+.hud{position:fixed;z-index:2;pointer-events:none}
+.top{top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:20px 24px}
+.brand h1{font-family:var(--font-display);font-weight:600;font-size:28px;margin:0;letter-spacing:.2px;transition:color .8s}
+.brand p{margin:4px 0 0;color:var(--muted);transition:color .8s}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;pointer-events:auto}
+button{font:inherit;border:1px solid var(--line);background:var(--card);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--ink);padding:8px 14px;border-radius:999px;cursor:pointer}
+button:hover{background:#fff}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.55;cursor:wait}
+button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.pill{font-size:13px;color:var(--muted);background:var(--card);border:1px solid var(--line);padding:7px 12px;border-radius:999px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.pill .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#B6BEC9;margin-right:6px;vertical-align:1px}
+.pill.on .dot{background:var(--good)}
+.guide{left:24px;top:96px;width:260px;background:var(--card);border:1px solid var(--line);border-radius:16px;line-height:1.6;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);pointer-events:auto}
+.guide:not([open]){width:auto;border-radius:999px}
+.guide summary{list-style:none;cursor:pointer;padding:8px 14px;font-weight:500;display:flex;align-items:center;gap:8px;user-select:none}
+.guide summary::-webkit-details-marker{display:none}
+.guide summary::after{content:"";width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg) translateY(-2px);transition:transform .2s;margin-left:auto}
+.guide[open] summary::after{transform:rotate(-135deg) translateY(-1px)}
+.guide summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:999px}
+.guide-body{padding:2px 14px 12px}
+.guide h2{font-size:12px;margin:0 0 4px;color:var(--muted);font-weight:500;letter-spacing:.8px}
+.guide h2+dl{margin-bottom:10px}
+.guide dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13px}
+.guide dt{font-weight:700}
+.guide dd{margin:0;color:var(--muted)}
+.guide dd b{color:var(--ink);font-weight:600}
+.guide .keys{margin:0;font-size:12px;color:var(--muted)}
+.msg{left:50%;top:15%;transform:translateX(-50%);width:min(90%,560px);text-align:center;font-size:20px;font-weight:500;opacity:0;transition:opacity .6s,color .8s;text-wrap:balance}
+.msg.show{opacity:1}
+.again{left:50%;top:59%;transform:translateX(-50%);pointer-events:auto;font-size:16px;padding:10px 22px}
+.meter{bottom:20px;left:50%;transform:translateX(-50%);width:min(560px,calc(100% - 32px));background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px 18px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.meter-row{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--muted)}
+.meter-row strong{font-family:var(--font-display);font-size:16px;color:var(--ink);font-variant-numeric:tabular-nums}
+.bar{height:12px;border-radius:99px;background:rgba(31,39,51,.08);margin:8px 0 2px;overflow:hidden}
+.bar i{display:block;height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,#D3DAE2,#6F7886);transition:width .25s}
+.tally{right:24px;top:76px;width:136px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:8px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.counts{display:flex;flex-direction:column;gap:4px}
+.count{display:flex;align-items:center;justify-content:space-between;padding:4px 12px;border-radius:10px;background:rgba(255,255,255,.55);transition:background .2s,transform .2s}
+.count b{font-family:var(--font-display);font-weight:600;font-size:20px;font-variant-numeric:tabular-nums}
+.count span{font-size:14px;font-weight:500;color:var(--ink)}
+.count.flash{background:#fff;transform:translateX(-3px)}
+.preview{position:fixed;left:24px;bottom:20px;width:200px;aspect-ratio:4/3;max-width:40vw;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:#111;pointer-events:auto}
+.preview video,.preview canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+body.night .brand h1,body.night .msg{color:#fff}
+body.night .brand p{color:#C3CDE0}
+@media (max-width:760px){.guide{display:none}.tally{top:70px;right:16px;width:96px}.preview{bottom:120px}.brand h1{font-size:22px}.msg{font-size:17px}}
+</style>
+</head>
+<body>
+<canvas id="stage" aria-label="A cloud you can squeeze, grab, pull and slam"></canvas>
+
+<header class="hud top">
+  <div class="brand">
+    <h1>Office Cloud</h1>
+    <p>Hand today's stress to this cloud</p>
+  </div>
+  <div class="controls">
+    <span class="pill" id="status"><span class="dot"></span><span id="statusText">Camera off</span></span>
+    <button class="primary" id="camBtn" type="button">Turn on camera</button>
+    <button id="previewBtn" type="button" hidden>Hide video</button>
+    <button id="resetBtn" type="button">Reset</button>
+  </div>
+</header>
+
+<details class="hud guide" id="guide">
+  <summary>How to play</summary>
+  <div class="guide-body">
+  <h2>Hand gestures</h2>
+    <p class="keys" style="margin:0 0 6px">Keep your hands at chest height so the camera can see them.</p>
+  <dl>
+    <dt>Squeeze</dt><dd><b>One hand.</b> Open palm on the cloud, then clench it into a fist</dd>
+    <dt>Grab</dt><dd><b>One hand.</b> Clench and keep holding (or move the cloud)</dd>
+    <dt>Pull</dt><dd><b>Two fists</b> on the cloud, pull apart</dd>
+    <dt>Slam</dt><dd><b>One hand.</b> Grab it, lift it, swing down hard</dd>
+  </dl>
+  <h2>Without a camera</h2>
+  <dl>
+    <dt>Squeeze</dt><dd>Click the cloud</dd>
+    <dt>Grab</dt><dd>Press and hold still</dd>
+    <dt>Pull</dt><dd>Drag from the edge of the cloud outward</dd>
+    <dt>Slam</dt><dd>Drag from the middle and fling it</dd>
+  </dl>
+  <p class="keys">Demo keys: 1 Squeeze · 2 Grab · 3 Pull · 4 Slam · R Reset</p>
+  </div>
+</details>
+
+<div class="hud msg" id="msg" role="status" aria-live="polite"></div>
+<button class="hud again" id="againBtn" type="button" hidden>Play again</button>
+
+<section class="hud meter" aria-label="Storm level">
+  <div class="meter-row"><span>Storm level</span><strong id="stressVal">0 / 100</strong></div>
+  <div class="bar"><i id="bar"></i></div>
+</section>
+
+<aside class="hud tally" aria-label="Action counts">
+  <div class="counts">
+    <div class="count" id="c-squeeze"><span>Squeeze</span><b>0</b></div>
+    <div class="count" id="c-grab"><span>Grab</span><b>0</b></div>
+    <div class="count" id="c-pull"><span>Pull</span><b>0</b></div>
+    <div class="count" id="c-slam"><span>Slam</span><b>0</b></div>
+  </div>
+</aside>
+
+<div class="preview" id="preview" hidden>
+  <video id="video" playsinline muted></video>
+  <canvas id="pv"></canvas>
+</div>
+
+<script type="module">
+// ================= 可调参数（做用户测试时可以改这里） =================
+const CONFIG = {
+  // --- Scoring ---
+  FULL: 100,                                  // storm level at which the cloud rains
+  RATE: 0.5,                                  // overall scoring speed (1 = fast, smaller = slower)
+  GAIN: { grab: 3, squeeze: 5, pull: 5, slap: 3, punch: 5, slam: 7 }, // base points per action (x force)
+  BONUS: 4,                                   // extra points for an especially hard pull
+  MAX_FORCE: 2.5,                             // force can multiply points up to this much
+  GRAB_TICK: 0.9,                             // while holding a grab, add points every N seconds
+  RAIN_SECONDS: 10,                           // how long the rain lasts
+  LIGHTNING: false,                           // lightning effect on/off
+
+  // --- Look ---
+  GROW_CURVE: 1.6,                            // growth curve: higher = slow at first, fast near full
+  SAD_AT: 50,                                 // storm level where eyes turn sad
+  CRY_AT: 90,                                 // storm level where eyes become >  <
+
+  // --- Motion speeds (in cloud radii per second) ---
+  FAST: 6.0, SLOW: 2.5, HIT_COOLDOWN: 0.4,    // legacy slap/punch thresholds (unused)
+  THROW: 2.5,                                 // release faster than this to throw the cloud
+  SWING: 3.5,                                 // swing down faster than this while holding = Slam
+  SLAM_MIN: 3.0,                              // minimum floor-impact speed that counts as Slam
+  GRAVITY: 3.4,                               // gravity when thrown (screen heights / s^2)
+  CARRY_MAX: 3.0,                             // above this size the cloud is too big to lift
+
+  // --- Hand detection ---
+  FIST_ON: 0.85, FIST_OFF: 1.0, OPEN_AT: 1.15, // fingertip-to-palm distance / palm length (smaller = tighter fist)
+  GRAB_WAIT: 0.15,                            // wait briefly after one fist to see if it's a two-hand Pull
+  PULL_TRIGGER: 1.22, PULL_REARM: 1.08,       // stretch past 1.22x counts a Pull; relax below 1.08x to re-arm
+  PULL_MAX: 3.0,                              // maximum stretch
+  PULL_GRACE: 0.6,                            // seconds a lost fist still counts as pulling
+  SQUEEZE_TRIGGER: 0.72, SQUEEZE_REARM: 0.9,  // legacy (unused)
+  HAND_REACH: 1.25,                           // how far hand movement maps across the screen
+  HAND_Y: 0.62,                               // camera height that maps to the cloud's center (0.62 ~ chest)
+};
+const MP_VERSION = "0.10.14";
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`;
+const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+const LABEL = { grab: "Grab", squeeze: "Squeeze", pull: "Pull", slap: "Slap!", punch: "Punch!", slam: "Slam!" };
+const KINDS = ["grab", "squeeze", "pull", "slam"];
+
+// ================= 基础 =================
+const TAU = Math.PI * 2;
+const $ = id => document.getElementById(id);
+const cv = $("stage"), ctx = cv.getContext("2d");
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const WOB = reduceMotion ? 0.3 : 1;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const shade = (c, d) => [clamp(c[0] + d, 0, 255), clamp(c[1] + d, 0, 255), clamp(c[2] + d, 0, 255)];
+const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+const angDiff = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+
+let W = 0, H = 0, R0 = 100;
+function resize() {
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  R0 = Math.min(W, H) * 0.175;
+}
+addEventListener("resize", resize); resize();
+
+// ================= 状态 =================
+const S = {
+  phase: "charge",          // charge 积攒 → rain 下雨 → clear 雨停
+  stress: 0,
+  counts: { grab: 0, squeeze: 0, pull: 0, slap: 0, punch: 0, slam: 0 }, shake: 0,
+  body: { x: 0, y: 0, vx: 0, vy: 0, tx: 0, ty: 0, mode: "home", t: 0 }, // 云被抓起、扔出去时的位置偏移
+  def: { x: 1, v: 0, a: 0 }, // 拉伸/挤压（x>1 拉长，x<1 压扁），a = 方向
+  dent: { x: 0, v: 0, ang: 0, hold: 0 },
+  bounce: { x: 0, v: 0 },
+  react: 0, t: 0, flash: 0, thunderCool: 1, night: 0,
+  rainT: 0, puddle: 0, tieOff: 0, clearT: 0,
+  blink: 0, nextBlink: 2,
+  floaters: [], drops: [], splashes: [], bolts: [],
+};
+const STARS = Array.from({ length: 80 }, () => ({ x: Math.random(), y: Math.random() * 0.62, r: 0.6 + Math.random() * 1.4, ph: Math.random() * TAU }));
+
+// 毛绒质感：预先生成的短绒毛
+const FUR = [[], [], []];
+// 毛绒：很多根往外梳的短毛，边缘更密，让轮廓软但清楚
+const HAIRS = [];
+for (let i = 0; i < 13000; i++) {
+  const edge = Math.random() < 0.46; // 随机打散：只画前一部分时，边缘和内部的比例也不变
+  const th = Math.random() * TAU;
+  HAIRS.push({
+    th,
+    u: edge ? 0.86 + Math.random() * 0.14 : Math.sqrt(Math.random()) * 0.9,
+    dir: th + (Math.random() - 0.5) * (edge ? 0.9 : 1.8),
+    len: (edge ? 0.045 : 0.035) + Math.random() * 0.035,
+    j: Math.random() * 2 - 1,
+  });
+}
+const LIGHT = (() => { const x = -0.55, y = -0.83, d = Math.hypot(x, y); return [x / d, y / d]; })();
+const PUFFS = [[-0.45, -0.35, 0.45], [0.1, -0.5, 0.5], [0.55, -0.25, 0.42], [-0.6, 0.15, 0.4], [0, 0, 0.5], [0.5, 0.25, 0.4], [-0.2, 0.4, 0.38]];
+const ASPECT = 1.06; // 宽高比，越接近 1 越圆
+let lookAt = null; // 眼睛看向哪里（鼠标 / 手）
+
+function spring(o, target, k, c, dt) {
+  const a = k * (target - o.x) - c * o.v;
+  o.v += a * dt; o.x += o.v * dt;
+}
+
+// ================= 云的形状 =================
+function cloudFrame() {
+  const s01 = S.stress / CONFIG.FULL;
+  // 乌云值越高云越大，到 100 时铺满整个屏幕
+  const grow = Math.pow(s01, CONFIG.GROW_CURVE);
+  const Rfull = Math.hypot(W, H) * 0.6;
+  const R = lerp(R0, Rfull, grow) * (1 + S.bounce.x);
+  const bob = (Math.sin(S.t * 1.3) * R0 * 0.04 * WOB) * (1 - grow) - S.night * H * 0.05 + grow * H * 0.05;
+  const sh = S.shake * R0 * 0.06;
+  const hx = W / 2, hy = H * 0.45 + bob;
+  return { cx: hx + S.body.x + Math.sin(S.t * 63) * sh, cy: hy + S.body.y + Math.cos(S.t * 51) * sh * 0.6, R, hx, hy };
+}
+function shape(th, t) {
+  // 6 个圆鼓鼓的云朵包，凹处清楚，轮廓一眼能认出来
+  let b = 0.88 + 0.15 * Math.pow(Math.abs(Math.cos(3 * th + 0.52)), 0.65);
+  const sy = Math.sin(th);
+  if (sy > 0) b *= 1 - 0.05 * sy * sy; // 底部只稍微平一点
+  b *= 1 + 0.022 * Math.sin(t * 2.4) * WOB; // 呼吸
+  b += WOB * 0.008 * Math.sin(3 * th + t * 2.2);
+  if (S.dent.x > 0.001) { const d = angDiff(th, S.dent.ang); b *= 1 - S.dent.x * Math.exp(-d * d / 0.12); }
+  return b;
+}
+function matrix() {
+  const s = clamp(S.def.x, 0.4, CONFIG.PULL_MAX + 0.2), a = S.def.a;
+  const sx = s, sy = 1 / Math.sqrt(s), ca = Math.cos(a), sa = Math.sin(a);
+  return { m00: ca * ca * sx + sa * sa * sy, m01: ca * sa * (sx - sy), m11: sa * sa * sx + ca * ca * sy };
+}
+// 屏幕就是容器：云碰到网页边缘时被软软地压住、贴着边铺开，像水装满一个盒子，而不是冲出屏幕
+function soft(v, lo, hi, m) {
+  if (v > hi - m) return hi - m + m * Math.tanh((v - (hi - m)) / m);
+  if (v < lo + m) return lo + m - m * Math.tanh((lo + m - v) / m);
+  return v;
+}
+function makeT(f) {
+  const { m00, m01, m11 } = matrix();
+  const pad = 2, m = Math.min(W, H) * 0.16;
+  return (lx, ly) => {
+    const x = lx * f.R * ASPECT, y = ly * f.R;
+    return [soft(f.cx + m00 * x + m01 * y, pad, W - pad, m), soft(f.cy + m01 * x + m11 * y, pad, H - pad, m)];
+  };
+}
+function hitTest(p, f, margin = 1.08) {
+  const { m00, m01, m11 } = matrix();
+  const x = p[0] - f.cx, y = p[1] - f.cy, det = m00 * m11 - m01 * m01;
+  const lx = ((m11 * x - m01 * y) / det) / (f.R * ASPECT), ly = ((-m01 * x + m00 * y) / det) / f.R;
+  const r = Math.hypot(lx, ly), th = Math.atan2(ly, lx);
+  return r < shape(th, S.t) * margin ? { th, r } : null;
+}
+
+// ================= 互动 → 乌云值 =================
+// amount = 这一次加多少分；count = 要不要算进动作次数（捏住不放的持续加分不算新的一次）
+function register(kind, x, y, amount = CONFIG.GAIN[kind], count = true, note = "") {
+  if (S.phase !== "charge") return;
+  amount = Math.max(1, Math.round(amount * CONFIG.RATE));
+  if (count) S.counts[kind]++;
+  S.stress = Math.min(CONFIG.FULL, S.stress + amount);
+  S.react = 0.5;
+  S.bounce.v += ({ grab: 0.5, squeeze: 0.8, pull: 0.8, slap: 0.6, punch: 1.3, slam: 1.0 }[kind]) * (count ? 1 : 0.4);
+  const fx = clamp(x, 60, W - 60), fy = clamp(y, 110, H - 200);
+  S.floaters.push({ x: fx, y: fy, text: `${note}${LABEL[kind]} +${amount}`, life: 0 });
+  updateHUD(kind);
+  if (S.stress >= CONFIG.FULL) startRain();
+}
+function startRain() {
+  S.phase = "rain"; S.rainT = 0;
+  showMsg("It can't hold any more… let it rain.", 4);
+}
+function finishRain() {
+  // 雨下完：乌云值清零，云变回一开始的小白云，可以继续玩
+  S.phase = "charge"; S.stress = 0;
+  updateHUD();
+  $("msg").classList.remove("show");
+}
+function reset() {
+  Object.assign(S, { phase: "charge", stress: 0, rainT: 0, puddle: 0, tieOff: 0, clearT: 0, flash: 0, react: 0 });
+  S.counts = { grab: 0, squeeze: 0, pull: 0, slap: 0, punch: 0, slam: 0 };
+  Object.assign(S.body, { x: 0, y: 0, vx: 0, vy: 0, mode: "home" }); carry = null;
+  S.drops.length = 0; S.splashes.length = 0; S.bolts.length = 0; S.floaters.length = 0;
+  $("againBtn").hidden = true;
+  updateHUD();
+  showMsg("Squeeze it, grab it, pull it, slam it.", 4);
+}
+
+// ================= 界面 =================
+let msgTimer = 0;
+function showMsg(text, seconds) {
+  const el = $("msg"); el.textContent = text; el.classList.add("show");
+  clearTimeout(msgTimer);
+  if (seconds > 0) msgTimer = setTimeout(() => el.classList.remove("show"), seconds * 1000);
+}
+function updateHUD(kind) {
+  const v = Math.round(S.stress);
+  $("stressVal").textContent = `${v} / ${CONFIG.FULL}`;
+  $("bar").style.width = `${(S.stress / CONFIG.FULL) * 100}%`;
+  for (const k of KINDS) $(`c-${k}`).querySelector("b").textContent = S.counts[k];
+  if (kind) { const el = $(`c-${kind}`); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 220); }
+}
+function setStatus(text, on = false) { $("statusText").textContent = text; $("status").classList.toggle("on", on); }
+
+// ================= 摄像头 + 双手识别 =================
+const video = $("video"), pv = $("pv"), pctx = pv.getContext("2d");
+let landmarker = null, lastVideoTime = -1, lastDetectT = 0, hands = [], fistStarts = [];
+let pull = { active: false, d0: 0, st: 1, lastSeen: 0, p0: null, p1: null }, pendingGrab = null, pullArmed = true, squeezeArmed = true, pullDeep = false, squeezeDeep = false, squeezeHold = null;
+
+async function startCamera() {
+  const btn = $("camBtn"); btn.disabled = true;
+  try {
+    setStatus("Opening camera…");
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" }, audio: false });
+    video.srcObject = stream; await video.play();
+    setStatus("Loading hand tracking…");
+    const { HandLandmarker, FilesetResolver } = await import(MP_URL);
+    const fileset = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+    const opts = delegate => ({ baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: "VIDEO", numHands: 2,
+      minHandDetectionConfidence: 0.35, minHandPresenceConfidence: 0.35, minTrackingConfidence: 0.35 }); // 拳头比张开的手难认，放宽一点
+    try { landmarker = await HandLandmarker.createFromOptions(fileset, opts("GPU")); }
+    catch { landmarker = await HandLandmarker.createFromOptions(fileset, opts("CPU")); }
+    $("preview").hidden = false; $("previewBtn").hidden = false; btn.hidden = true;
+    setStatus("Camera on", true);
+    showMsg("Hold both hands up to the camera. You'll see them on screen.", 4);
+  } catch (err) {
+    console.error(err);
+    setStatus("Camera unavailable");
+    showMsg("The camera didn't open. Open this file in Chrome and allow camera access, or use the mouse for now.", 7);
+    btn.disabled = false;
+  }
+}
+function toScreen(p) {
+  return [(0.5 - p.x) * CONFIG.HAND_REACH * W + W / 2, (p.y - CONFIG.HAND_Y) * CONFIG.HAND_REACH * H + H * 0.45];
+}
+// 测试用：在浏览器控制台里设 window.__testHands = [{ x, y, fist: true }] 可以模拟一只手（平时不用管）
+function fakeHands() {
+  const now = performance.now(), dtd = Math.max(0.016, (now - lastDetectT) / 1000); lastDetectT = now;
+  const prev = hands;
+  hands = window.__testHands.map((t, i) => {
+    const palm = [t.x, t.y], old = prev[i], pts = Array.from({ length: 21 }, () => palm.slice());
+    const vel = old ? [(palm[0] - old.palm[0]) / dtd, (palm[1] - old.palm[1]) / dtd] : [0, 0], speed = Math.hypot(vel[0], vel[1]);
+    const lastOpen = !t.fist ? now : (old ? old.lastOpen : 0);
+    if (t.fist && !(old && old.fist)) fistStarts.push({ pt: palm, speed, fromOpen: now - lastOpen < 700 });
+    return { pts, fist: !!t.fist, open: !t.fist, lastOpen, palm, rawPalm: palm, vel, speed, cd: old ? old.cd : 0, hold: old ? old.hold : 0 };
+  });
+}
+function detect() {
+  if (window.__testHands) { fakeHands(); return; }
+  if (!landmarker || video.readyState < 2 || video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+  const now = performance.now(), dtd = Math.max(0.016, (now - lastDetectT) / 1000); lastDetectT = now;
+  const res = landmarker.detectForVideo(video, now);
+  const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+  const items = (res.landmarks || []).map(l => ({ lm: l, pts: l.map(toScreen) }));
+  items.sort((a, b) => a.pts[0][0] - b.pts[0][0]);
+  const prev = items.length === hands.length ? hands : [];
+  hands = items.map(({ lm, pts }, i) => {
+    const old = prev[i], rawPalm = pts[9].slice();
+    // 手不动时多平滑一点（不抖），手动得快时几乎不平滑（不拖延）
+    const a = old ? clamp(0.5 + dist(pts[9], old.pts[9]) / (R0 * 0.35), 0.5, 0.95) : 1;
+    if (old) pts = pts.map((p, k) => [lerp(old.pts[k][0], p[0], a), lerp(old.pts[k][1], p[1], a)]);
+    // 握拳判定（3D）：四个指尖离掌心有多远，除以手掌长度。
+    // 不管拳头是正对镜头、侧着还是手背朝镜头，都比只看 2D 画面准
+    const P = k => [lm[k].x * vw, lm[k].y * vh, (lm[k].z || 0) * vw];
+    const d3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const size = d3(P(0), P(9)) || 1;
+    const pc = [0, 5, 9, 13, 17].map(P).reduce((s, q) => [s[0] + q[0] / 5, s[1] + q[1] / 5, s[2] + q[2] / 5], [0, 0, 0]);
+    const ext = [8, 12, 16, 20].reduce((s, k) => s + d3(P(k), pc), 0) / 4 / size;
+    const wasFist = old ? old.fist : false;
+    const fist = wasFist ? ext < CONFIG.FIST_OFF : ext < CONFIG.FIST_ON;
+    const open = ext > CONFIG.OPEN_AT;
+    const palm = pts[9];
+    const vel = old ? [(palm[0] - old.palm[0]) / dtd, (palm[1] - old.palm[1]) / dtd] : [0, 0];
+    const speed = Math.hypot(vel[0], vel[1]);
+    const lastOpen = ext > (CONFIG.FIST_OFF + CONFIG.OPEN_AT) / 2 ? now : (old ? old.lastOpen : 0);
+    if (fist && !wasFist) fistStarts.push({ pt: palm, speed, fromOpen: now - lastOpen < 700 });
+    return { pts, fist, open, ext, lastOpen, palm, rawPalm, vel, speed, cd: old ? old.cd : 0, hold: old ? old.hold : 0 };
+  });
+  drawPreview(res.landmarks || []);
+}
+function drawPreview(list) {
+  if ($("preview").hidden) return;
+  const w = pv.width = pv.clientWidth * 2, h = pv.height = pv.clientHeight * 2;
+  pctx.clearRect(0, 0, w, h);
+  pctx.fillStyle = "#7CE0B4";
+  for (const l of list) for (const p of l) { pctx.beginPath(); pctx.arc(p.x * w, p.y * h, 4, 0, TAU); pctx.fill(); }
+}
+
+function handGestures(f, g, dt) {
+  const two = hands.length === 2;
+  const FAST = f.R * CONFIG.FAST, SLOW = f.R * CONFIG.SLOW;
+  for (const h of hands) h.cd = Math.max(0, h.cd - dt);
+  const now = performance.now();
+  // 两只手都收拢（握拳或半握）= Pull；不用两只手都是很标准的拳头
+  // 两只手都收拢（握拳或半握）就是 Pull，不管拳头离云有多远（举在脸旁边也可以）
+  const closed = h => h.fist || !h.open;
+  const bothFists = two && closed(hands[0]) && closed(hands[1]);
+  if (bothFists) pull.lastSeen = now;
+  // 握拳时摄像头常常会有一只手「消失」一下：扯的过程中，消失的那只手先用它最后的位置代替
+  let hs = hands;
+  if (pull.active && hands.length === 1 && pull.p0 && now - pull.lastSeen < CONFIG.PULL_GRACE * 1000) {
+    const h = hands[0];
+    hs = dist(h.palm, pull.p0) < dist(h.palm, pull.p1) ? [h, { palm: pull.p1 }] : [{ palm: pull.p0 }, h];
+  }
+  // 两只手都握拳 = 扯。识别闪一下、或者一只拳头短暂跟丢，都不会中断
+  if (hs.length === 2 && (bothFists || (pull.active && now - pull.lastSeen < CONFIG.PULL_GRACE * 1000))) {
+    if (hands.length === 1 || !bothFists) pull.lastSeen = Math.min(pull.lastSeen, now); // 只是在宽限时间里
+    const p0 = hs[0].palm, p1 = hs[1].palm, d = dist(p0, p1);
+    pendingGrab = null;
+    const mid = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+    if (!pull.active) { pull.active = true; pull.d0 = d; pull.mid0 = mid; pull.bx = S.body.x; pull.by = S.body.y; }
+    // 拳头之间拉开了多少，云就变长多少：两边像被拳头拽着一样跟着走
+    const ext = 2 * f.R * ASPECT * 0.97;
+    // 两种算法取大的：拉开的绝对距离（拳头靠得近时）和相对比例（拳头本来就离得远时）
+    const st = clamp(Math.max((ext + (d - pull.d0)) / ext, d / Math.max(pull.d0, 1)), 0.7, CONFIG.PULL_MAX);
+    pull.st = st; pull.p0 = p0; pull.p1 = p1;
+    g.target = st; g.axis = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]); g.active = true; g.follow = true;
+    // 云的中心跟着两只拳头的中点走
+    S.body.mode = "held"; S.body.tx = pull.bx + (mid[0] - pull.mid0[0]); S.body.ty = pull.by + (mid[1] - pull.mid0[1]);
+    const mx = (p0[0] + p1[0]) / 2, my = Math.min(p0[1], p1[1]) - 40;
+    if (pullArmed && st > CONFIG.PULL_TRIGGER) { pullArmed = false; pullDeep = true; register("pull", mx, my); }
+    if (pullDeep && st > 1.5) { pullDeep = false; register("pull", mx, my - 30, CONFIG.BONUS, false, "Hard "); }
+    if (st < CONFIG.PULL_REARM) { pullArmed = true; pullDeep = false; }
+    fistStarts.length = 0;
+    if (carry) { carry = null; S.body.mode = "home"; }
+    return;
+  }
+  if (pull.active && !carry) S.body.mode = "home"; // 松开：云弹回去
+  pull.active = false; pullArmed = true; pullDeep = false;
+  if (false && two && hands[0].open && hands[1].open) { // Squeeze 已关闭
+    // 挤：双手张开在云两侧往中间合
+    const L = hands[0].palm, Rr = hands[1].palm, d = Rr[0] - L[0];
+    const onCloud = hitTest(L, f, 1.35) && hitTest(Rr, f, 1.35);
+    const sides = L[0] < f.cx && Rr[0] > f.cx;
+    if (onCloud && sides && d > 0) {
+      if (!squeezeHold) squeezeHold = { d0: Math.max(d, f.R * 0.6) };
+      const sq = clamp(d / squeezeHold.d0, 0.5, 1);
+      g.target = sq; g.axis = 0; g.active = sq < 0.97;
+      const mx = (L[0] + Rr[0]) / 2, my = Math.min(L[1], Rr[1]) - 40;
+      if (squeezeArmed && sq < CONFIG.SQUEEZE_TRIGGER) { squeezeArmed = false; squeezeDeep = true; register("squeeze", mx, my); }
+      if (squeezeDeep && sq < 0.58) { squeezeDeep = false; register("squeeze", mx, my - 30, CONFIG.BONUS, false, "Hard "); }
+      if (sq > CONFIG.SQUEEZE_REARM) { squeezeArmed = true; squeezeDeep = false; }
+    } else { squeezeArmed = true; squeezeDeep = false; squeezeHold = null; }
+  } else { squeezeArmed = true; squeezeDeep = false; squeezeHold = null; }
+
+  for (const h of hands) {
+    const hit = hitTest(h.palm, f, 1.2);
+    if (!hit) continue;
+    // 拍 / 锤：手快速撞到云上
+    if (false && h.cd <= 0 && h.speed > FAST && !carry) { // Slap / Punch 已关闭
+      h.cd = CONFIG.HIT_COOLDOWN;
+      const force = clamp(h.speed / FAST, 1, CONFIG.MAX_FORCE); // 手越快，力度越大
+      if (h.fist) punchAt(hit.th, h.palm, force);
+      else if (h.open) slapAt(Math.atan2(h.vel[1], h.vel[0]), h.palm, force);
+      continue;
+    }
+    // 捏：握着拳慢慢待在云上，云被捏出一个凹；一直捏着不放会持续加分
+    if (h.fist && h.speed < SLOW) {
+      g.dent = Math.max(g.dent, 0.28); S.dent.ang = hit.th; g.active = true;
+      h.hold = (h.hold || 0) + dt;
+      if (h.hold >= CONFIG.GRAB_TICK) { h.hold = 0; register("grab", h.palm[0], h.palm[1] - 40, 2, false); }
+    } else h.hold = 0;
+  }
+  for (const e of fistStarts) {
+    const hit = hitTest(e.pt, f, 1.2);
+    // 只有一只手在云上时才算 Grab；两只手都在云上就交给 Pull / Squeeze
+    // 另一只手也在附近：多等一会儿，看它是不是也要握拳来扯
+    const otherNear = hands.some(h => dist(h.palm, e.pt) > f.R * 0.3);
+    if (hit && e.speed < SLOW && !carry && !pendingGrab) pendingGrab = { pt: e.pt, t: now, th: hit.th, wait: otherNear ? 0.5 : CONFIG.GRAB_WAIT, fromOpen: e.fromOpen };
+  }
+  fistStarts.length = 0;
+  // 等一小会儿：第二只手没有跟着握拳，才算单手「捏」并把云抓起来
+  if (pendingGrab && now - pendingGrab.t > pendingGrab.wait * 1000) {
+    let h = null, best = Infinity;
+    for (const c of hands) { const d = dist(c.palm, pendingGrab.pt); if (c.fist && d < best) { best = d; h = c; } }
+    if (h && best < f.R * 1.5) {
+      if (pendingGrab.fromOpen) {
+        squeezeAt(pendingGrab.th, h.palm); // 张开的手握紧 = Squeeze
+        if (canCarry(f)) { startCarry(f, h.palm); carry.grabbed = false; } // 继续握着不放，才会变成 Grab
+      } else {
+        S.dent.ang = pendingGrab.th; register("grab", h.palm[0], h.palm[1] - 30);
+        if (canCarry(f)) { startCarry(f, h.palm); carry.grabbed = true; }
+      }
+    }
+    pendingGrab = null;
+  }
+  // 抓着云：云跟着拳头走；松开拳头时手在快速移动 = 扔出去；握着拳快速往下甩 = 直接摔下去
+  if (carry && !mouseCarry) {
+    let h = null, best = Infinity;
+    for (const c of hands) { const d = dist(c.palm, carry.last); if (c.fist && d < best) { best = d; h = c; } }
+    if (!h || best > f.R * 2) releaseCarry(f); // 拳头松开或者手跟丢了：按刚才的手速扔出去
+    else {
+      moveCarry(f, h.palm, h.rawPalm); g.active = true;
+      // Squeeze 之后一直握着：超过 0.8 秒、或者拖着云走了一段，就算 Grab
+      if (carry.grabbed === false && (now - carry.t0 > 800 || dist(h.palm, carry.start) > f.R * 0.35)) {
+        carry.grabbed = true; register("grab", h.palm[0], h.palm[1] - 30);
+      }
+      const v = carry.vel;
+      if (v[1] > R0 * CONFIG.SWING && v[1] > Math.abs(v[0]) * 0.5) releaseCarry(f); // 握着拳往下甩 = 摔
+    }
+  }
+}
+// 拍：云朝被拍的方向扁一下，像果冻一样弹回来
+// ===== 抓起来、扔出去、摔在地上 =====
+let carry = null;
+const canCarry = f => f.R < R0 * CONFIG.CARRY_MAX && S.phase === "charge";
+function startCarry(f, p) {
+  carry = { ox: f.cx - p[0], oy: f.cy - p[1], vel: [0, 0], last: p, start: p.slice(), t0: performance.now(), grabbed: true, hist: [{ t: performance.now(), p: p.slice() }] };
+  S.body.mode = "held"; S.body.tx = S.body.x; S.body.ty = S.body.y;
+}
+// 用最近 0.2 秒手走了多远来算速度：比只看一帧稳得多，甩得快时摄像头掉帧也能算出来
+function histVel() {
+  const h = carry.hist, now = performance.now();
+  while (h.length > 2 && now - h[0].t > 130) h.shift();
+  // 取这段时间里「最快的那一下」：甩的动作最猛的瞬间才是用户想要的力度
+  let best = [0, 0], bs = 0;
+  for (let i = 1; i < h.length; i++) {
+    const dt = (h[i].t - h[i - 1].t) / 1000;
+    if (dt < 0.012) continue;
+    const v = [(h[i].p[0] - h[i - 1].p[0]) / dt, (h[i].p[1] - h[i - 1].p[1]) / dt], sp = Math.hypot(v[0], v[1]);
+    if (sp > bs) { bs = sp; best = v; }
+  }
+  return best;
+}
+function moveCarry(f, p, rawP) {
+  carry.last = p;
+  carry.hist.push({ t: performance.now(), p: (rawP || p).slice() });
+  carry.vel = histVel();
+  S.body.tx = p[0] + carry.ox - f.hx; S.body.ty = p[1] + carry.oy - f.hy;
+}
+function releaseCarry(f) {
+  const v = histVel(), sp = Math.hypot(v[0], v[1]), cap = 3600;
+  for (const h of hands) h.cd = Math.max(h.cd, 0.7); // 刚扔完的这一下不要再被算成拍 / 锤
+  if (sp > R0 * (mouseCarry ? CONFIG.THROW * 0.8 : CONFIG.THROW)) {
+    const k = Math.min(1, cap / sp);
+    // 往下扔时给足速度，马上砸到地上，不会慢悠悠地落
+    const vy = v[1] > 0 ? Math.max(v[1] * k * 1.5, R0 * 13) : v[1] * k;
+    Object.assign(S.body, { mode: "fly", vx: v[0] * k * 1.2, vy });
+  } else S.body.mode = "home";
+  carry = null;
+}
+function slamAt(f, impact) {
+  const force = clamp(impact / (R0 * 9), 1, CONFIG.MAX_FORCE);
+  S.def.a = Math.PI / 2; S.def.v -= 4 + 5 * force; // 被摔扁：上下压扁、左右摊开
+  S.shake = Math.min(1.5, 0.7 + 0.4 * force);
+  register("slam", f.cx, H - 104 - f.R * 2, CONFIG.GAIN.slam * force, true, force > 1.8 ? "Hard " : "");
+}
+// 分成很小的步子算，掉帧时云也不会抖、不会乱弹
+function updateBody(dt) {
+  const n = Math.max(1, Math.ceil(dt / (1 / 240)));
+  for (let i = 0; i < n; i++) stepBody(dt / n);
+}
+function stepBody(dt) {
+  const b = S.body, f = cloudFrame();
+  if (S.phase !== "charge" && b.mode !== "home") { b.mode = "home"; carry = null; }
+  if (b.mode === "held") {
+    const ax = 900 * (b.tx - b.x) - 50 * b.vx, ay = 900 * (b.ty - b.y) - 50 * b.vy; // 云紧紧跟着手
+    b.vx += ax * dt; b.vy += ay * dt;
+    const floorY = H - 104 - f.R * 0.9 - f.hy;
+    if (b.y + b.vy * dt > floorY) {
+      // 抓在手里直接砸到地上，也算摔
+      if (b.vy > R0 * CONFIG.SLAM_MIN) { slamAt(f, b.vy); carry = null; mouseCarry = false; b.mode = "settle"; b.t = 0.7; b.vy = -b.vy * 0.3; }
+      else { b.y = floorY; b.vy = Math.min(0, b.vy); }
+    }
+  } else if (b.mode === "home") {
+    const ax = 22 * (0 - b.x) - 8 * b.vx, ay = 22 * (0 - b.y) - 8 * b.vy;
+    b.vx += ax * dt; b.vy += ay * dt;
+  } else if (b.mode === "fly" || b.mode === "settle") {
+    b.vy += H * CONFIG.GRAVITY * dt;
+    if (b.mode === "settle") { b.vx *= 1 - Math.min(1, dt * 6); if ((b.t -= dt) <= 0) b.mode = "home"; }
+  }
+  b.x += b.vx * dt; b.y += b.vy * dt;
+  if (b.mode === "fly" || b.mode === "settle") {
+    const floor = H - 104; // 地面：在底部乌云值条的上面，摔下来看得见
+    const bottom = floor - f.R * 0.9 - f.hy, top = f.R * 0.9 - f.hy;
+    const left = f.R * ASPECT - f.hx, right = W - f.R * ASPECT - f.hx;
+    if (b.y > bottom) {
+      b.y = bottom;
+      if (b.mode === "fly" && b.vy > R0 * CONFIG.SLAM_MIN) slamAt(f, b.vy);
+      b.vy = -b.vy * 0.32; b.vx *= 0.7;
+      if (Math.abs(b.vy) < R0 * 1.5 && b.mode === "fly") { b.mode = "settle"; b.t = 0.7; b.vy = 0; }
+    }
+    if (b.y < top) { b.y = top; b.vy = -b.vy * 0.4; }
+    if (b.x < left) { b.x = left; b.vx = -b.vx * 0.45; S.def.a = 0; S.def.v -= Math.min(6, Math.abs(b.vx) / R0); }
+    if (b.x > right) { b.x = right; b.vx = -b.vx * 0.45; S.def.a = 0; S.def.v -= Math.min(6, Math.abs(b.vx) / R0); }
+  }
+}
+// Squeeze：握紧的地方深深陷下去，整朵云被挤得扁一下
+function squeezeAt(th, p) {
+  S.dent.ang = th; S.dent.v += 7; S.dent.hold = 0.25;
+  S.def.a = 0; S.def.v -= 5;
+  register("squeeze", p[0], p[1] - 30);
+}
+function slapAt(angle, p, force = 1) {
+  S.def.a = angle; S.def.v -= 6 + 4 * force;
+  register("slap", p[0], p[1] - 30, CONFIG.GAIN.slap * force, true, force > 1.8 ? "Hard " : "");
+}
+// 锤：被锤的地方深深凹进去，整朵云抖一下
+function punchAt(th, p, force = 1) {
+  S.dent.ang = th; S.dent.v += 6 + 4 * force;
+  S.shake = Math.min(1.5, 0.6 + 0.4 * force);
+  register("punch", p[0], p[1] - 30, CONFIG.GAIN.punch * force, true, force > 1.8 ? "Hard " : "");
+}
+
+// ================= 鼠标 / 触屏备用 =================
+let ptr = null, tapTimer = 0, lastTap = 0, mouseCarry = false;
+const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+cv.addEventListener("pointerdown", e => {
+  if (S.phase !== "charge") return;
+  const p = pos(e), hit = hitTest(p, cloudFrame());
+  if (!hit) return;
+  cv.setPointerCapture(e.pointerId);
+  const edge = hit.r / shape(hit.th, S.t) > 0.55; // 按在云的外圈 = 扯；按在中间 = 抓起来
+  ptr = { x0: p[0], y0: p[1], x: p[0], y: p[1], t0: performance.now(), mode: "down", th: hit.th, counted: false, edge };
+});
+cv.addEventListener("pointermove", e => {
+  const p = pos(e); lookAt = p;
+  if (!ptr) return;
+  const now = performance.now(), dtm = Math.max(0.008, (now - (ptr.tm || now - 16)) / 1000);
+  ptr.vel = [(p[0] - ptr.x) / dtm, (p[1] - ptr.y) / dtm]; ptr.tm = now;
+  ptr.x = p[0]; ptr.y = p[1];
+  if ((ptr.mode === "down" || ptr.mode === "grab") && Math.hypot(ptr.x - ptr.x0, ptr.y - ptr.y0) > 12) {
+    const f = cloudFrame();
+    if (e.altKey || ptr.edge || !canCarry(f)) { ptr.mode = "pull"; ptr.counted = false; }
+    else { ptr.mode = "carry"; mouseCarry = true; startCarry(f, [ptr.x0, ptr.y0]); }
+  }
+  if (ptr.mode === "carry" && carry) moveCarry(cloudFrame(), p);
+});
+const endPtr = () => {
+  if (!ptr) return;
+  const now = performance.now();
+  if (ptr.mode === "down" && now - ptr.t0 < 250) squeezeAt(ptr.th, [ptr.x, ptr.y]); // 点一下 = Squeeze
+  if (ptr.mode === "pull") S.body.mode = "home";
+  if (ptr.mode === "carry" && carry) {
+    // 松手前一小段时间没动，就算轻轻放下
+    releaseCarry(cloudFrame());
+  }
+  mouseCarry = false;
+  ptr = null;
+};
+cv.addEventListener("pointerup", endPtr);
+cv.addEventListener("pointercancel", () => { ptr = null; });
+
+function mouseGestures(f, g) {
+  if (!ptr) return;
+  const el = performance.now() - ptr.t0;
+  if (ptr.mode === "down" && el > 250) ptr.mode = "grab";
+  if (ptr.mode === "pull") {
+    const dx = ptr.x - ptr.x0, dy = ptr.y - ptr.y0, L = Math.hypot(dx, dy), ext = 2 * f.R * ASPECT * 0.97;
+    if (ptr.bx === undefined) { ptr.bx = S.body.x; ptr.by = S.body.y; }
+    // 抓住的那一边跟着鼠标走，另一边留在原地：拖多远，云就被扯多长
+    g.target = clamp((ext + L) / ext, 1, CONFIG.PULL_MAX); g.axis = Math.atan2(dy, dx); g.active = true; g.follow = true;
+    const grown = (g.target - 1) * ext;
+    S.body.mode = "held"; S.body.tx = ptr.bx + (dx / (L || 1)) * grown / 2; S.body.ty = ptr.by + (dy / (L || 1)) * grown / 2;
+    if (!ptr.counted && g.target > CONFIG.PULL_TRIGGER) { ptr.counted = true; register("pull", f.cx, f.cy - f.R * 1.1); }
+  } else if (ptr.mode === "squeeze") {
+    g.target = 1 - 0.42 * clamp(el / 700, 0, 1); g.axis = 0; g.active = true;
+    if (!ptr.counted && g.target < CONFIG.SQUEEZE_TRIGGER) { ptr.counted = true; register("squeeze", f.cx, f.cy - f.R * 1.2); }
+  } else if (ptr.mode === "grab") {
+    g.dent = Math.max(g.dent, 0.28 * clamp((el - 250) / 300, 0, 1)); S.dent.ang = ptr.th; g.active = true;
+    if (!ptr.counted && el > 650) { ptr.counted = true; ptr.tick = el; register("grab", ptr.x, ptr.y - 30); }
+    else if (ptr.counted && el - ptr.tick > CONFIG.GRAB_TICK * 1000) { ptr.tick = el; register("grab", ptr.x, ptr.y - 40, 2, false); }
+  }
+}
+
+// 演示快捷键
+addEventListener("keydown", e => {
+  if (e.target.closest && e.target.closest("button")) return;
+  const f = cloudFrame(), k = e.key.toLowerCase(), top = [f.cx + (Math.random() - 0.5) * f.R, f.cy - f.R];
+  if (k === "1") squeezeAt(-Math.PI / 2 + (Math.random() - 0.5) * 2, top);
+  if (k === "2") { S.dent.ang = -Math.PI / 2 + (Math.random() - 0.5) * 2; S.dent.hold = 0.3; register("grab", top[0], top[1]); }
+  if (k === "3") { S.def.a = 0; S.def.v += 7; register("pull", f.cx, f.cy - f.R * 1.1); }
+  if (k === "4" && S.phase === "charge" && canCarry(f)) {
+    Object.assign(S.body, { mode: "fly", x: (Math.random() - 0.5) * W * 0.2, y: -H * 0.18, vx: (Math.random() - 0.5) * 300, vy: H * 2.2 });
+  }
+  if (k === "r") reset();
+});
+$("camBtn").addEventListener("click", startCamera);
+$("resetBtn").addEventListener("click", reset);
+$("againBtn").addEventListener("click", reset);
+$("previewBtn").addEventListener("click", () => {
+  const p = $("preview"); p.hidden = !p.hidden; $("previewBtn").textContent = p.hidden ? "Show video" : "Hide video";
+});
+
+// ================= 绘制 =================
+const DAY = { top: [214, 228, 240], bottom: [243, 246, 249] };
+const STORM = { top: [146, 156, 170], bottom: [194, 201, 210] };
+const NIGHT = { top: [22, 32, 60], bottom: [50, 62, 96] };
+function cloudColor() {
+  const s01 = S.stress / CONFIG.FULL;
+  const day = mix3([250, 251, 253], [120, 127, 139], Math.pow(s01, 0.9));
+  return mix3(day, [226, 232, 245], S.night);
+}
+function groundY() { return Math.min(H - 150, Math.max(H * 0.72, H * 0.45 + R0 * 1.6)); }
+
+function drawBg() {
+  const s01 = S.stress / CONFIG.FULL;
+  const top = mix3(mix3(DAY.top, STORM.top, s01), NIGHT.top, S.night);
+  const bot = mix3(mix3(DAY.bottom, STORM.bottom, s01), NIGHT.bottom, S.night);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(bot));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if (S.night > 0.01) {
+    ctx.fillStyle = "#FFFFFF";
+    for (const s of STARS) {
+      ctx.globalAlpha = S.night * (0.45 + 0.55 * Math.sin(S.t * 1.6 + s.ph) ** 2);
+      ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+function drawGround(f) {
+  const gy = groundY();
+  // 地上的影子：云一变大就慢慢消失
+  const fade = 1 - clamp((f.R / R0 - 1) / 0.6, 0, 1);
+  if (fade > 0.01) {
+    ctx.fillStyle = rgb([30, 40, 60], 0.08 * (1 - S.night * 0.6) * fade);
+    ctx.beginPath(); ctx.ellipse(f.cx, gy, Math.min(f.R * 1.5, W * 0.6), Math.min(f.R * 0.16, 60), 0, 0, TAU); ctx.fill();
+  }
+  if (S.puddle > 0.01) {
+    const w = W * 0.33 * Math.min(1, S.puddle);
+    ctx.fillStyle = S.night > 0.5 ? rgb([120, 150, 210], 0.28) : rgb([110, 135, 170], 0.25);
+    ctx.beginPath(); ctx.ellipse(f.cx, gy + 4, w, w * 0.08, 0, 0, TAU); ctx.fill();
+  }
+}
+
+function drawCloud(f) {
+  const T = makeT(f), t = S.t, col = cloudColor(), N = 180;
+  const outline = () => {
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const th = (i / N) * TAU, b = shape(th, t), [x, y] = T(Math.cos(th) * b, Math.sin(th) * b);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  };
+  const R = f.R;
+  // 1. 底色：像一团毛绒球的立体光影（左上亮、右下暗），边缘柔化
+  outline();
+  const g = ctx.createRadialGradient(f.cx - R * 0.35, f.cy - R * 0.45, R * 0.05, f.cx + R * 0.1, f.cy + R * 0.15, R * 1.35);
+  g.addColorStop(0, rgb(shade(col, 18))); g.addColorStop(0.55, rgb(col)); g.addColorStop(1, rgb(shade(col, -48)));
+  ctx.save();
+  ctx.shadowColor = "rgba(30,45,75,0.25)"; ctx.shadowBlur = R * 0.22; ctx.shadowOffsetY = R * 0.1;
+  const big = clamp((R / R0 - 1) / 1.1, 0, 1); // 0 = 正常大小，1 = 已经长大到原来的 2 倍多（毛完全淡掉）
+  ctx.filter = `blur(${Math.min(7, R * 0.022 * (1 + big * 0.5)).toFixed(1)}px)`;
+  ctx.fillStyle = g; ctx.fill(); ctx.restore();
+  // 2. 毛：按受光亮度分 8 组，每组一次画完
+  // 云变大时：毛不跟着变粗变长（保持细绒），而是画更多根来铺满
+  const hs = Math.min(1, (R0 * 1.4) / R);
+  const nHair = 5600;
+  // 大的时候用几团柔和的明暗来表现云的体积，代替毛
+  if (big > 0.02) {
+    ctx.save(); outline(); ctx.clip();
+    for (const [px, py, pr] of PUFFS) {
+      const [cx, cy] = T(px, py), r = pr * R;
+      const lit = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.35, 0, cx, cy, r);
+      lit.addColorStop(0, rgb(shade(col, 20), 0.55 * big)); lit.addColorStop(1, rgb(shade(col, 20), 0));
+      ctx.fillStyle = lit; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      const sh = ctx.createRadialGradient(cx, cy + r * 0.55, 0, cx, cy + r * 0.55, r * 0.8);
+      sh.addColorStop(0, rgb(shade(col, -34), 0.32 * big)); sh.addColorStop(1, rgb(shade(col, -34), 0));
+      ctx.fillStyle = sh; ctx.fillRect(cx - r, cy - r * 0.3, r * 2, r * 1.8);
+    }
+    ctx.restore();
+  }
+  const buckets = Array.from({ length: 8 }, () => []);
+  for (let n = 0; n < nHair; n++) {
+    const h = HAIRS[n];
+    const bb = shape(h.th, t) * h.u, nx = Math.cos(h.th), ny = Math.sin(h.th);
+    const lx = nx * bb, ly = ny * bb;
+    const facing = Math.max(0, nx * LIGHT[0] + ny * LIGHT[1]) * h.u;
+    const dome = 1 - h.u * h.u;
+    const br = clamp(0.32 + 0.5 * facing + 0.32 * dome - 0.28 * Math.max(0, ny) * h.u + 0.07 * h.j, 0, 0.999);
+    const hl = h.len * hs;
+    const ex = lx + Math.cos(h.dir) * hl, ey = ly + Math.sin(h.dir) * hl + hl * 0.15;
+    buckets[(br * 8) | 0].push(T(lx, ly), T(ex, ey));
+  }
+  ctx.lineCap = "round"; ctx.lineWidth = Math.max(1, Math.min(R, R0 * 1.4) * 0.0095);
+  ctx.save(); if (big > 0) ctx.filter = `blur(${(big * 2.5).toFixed(2)}px)`; // 变大时毛尖变软，不会扎眼
+  if (big < 0.99) {
+  buckets.forEach((pts, i) => {
+    if (!pts.length) return;
+    ctx.strokeStyle = rgb(shade(col, (i / 7 - 0.62) * 85), 0.55 * Math.pow(1 - big, 2));
+    ctx.beginPath();
+    for (let k = 0; k < pts.length; k += 2) { ctx.moveTo(pts[k][0], pts[k][1]); ctx.lineTo(pts[k + 1][0], pts[k + 1][1]); }
+    ctx.stroke();
+  });
+  }
+  ctx.restore();
+  const FR = R0, fk = FR / R; // 眼睛永远保持原来的大小，不跟着云一起变大
+  const TF = (x, y) => { const [px, py] = T(x, y); return [f.cx + (px - f.cx) * fk, f.cy + (py - f.cy) * fk]; };
+  drawFace({ ...f, R: FR }, TF);
+}
+
+// 表情阶段：0–49 豆豆眼 → 50–89 伤心 → 90 以上 ≥ ≤（下雨时乌云值往下掉，表情也会一路变回来）
+function faceMode(gActive) {
+  if (S.phase === "clear") return "sleep";
+  if (S.stress >= CONFIG.CRY_AT) return "cry";
+  if (S.react > 0 || gActive) return "squint";
+  if (S.stress >= CONFIG.SAD_AT) return "sad";
+  return "normal";
+}
+let lastActive = false;
+function drawFace(f, T) {
+  const R = f.R, mode = faceMode(lastActive);
+  // 眼睛看向你的手或鼠标
+  let ox = 0, oy = 0;
+  if (lookAt && mode !== "sleep" && mode !== "cry") {
+    const dx = lookAt[0] - f.cx, dy = lookAt[1] - f.cy, d = Math.hypot(dx, dy) || 1, k = Math.min(1, d / (R * 3)) * R * 0.03;
+    ox = (dx / d) * k; oy = (dy / d) * k;
+  }
+  // 两颗小豆豆眼，没有嘴巴；表情全靠眼睛
+  let [lx, ly] = T(-0.21, -0.13), [rx, ry] = T(0.21, -0.13);
+  lx += ox; rx += ox; ly += oy; ry += oy;
+  const ew = R * 0.064, eh = R * 0.088;
+  ctx.fillStyle = ctx.strokeStyle = "#111318"; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.lineWidth = R * 0.024;
+  const sadBrows = () => {
+    ctx.lineWidth = R * 0.018; ctx.beginPath();
+    ctx.moveTo(lx - ew * 1.5, ly - eh * 1.45); ctx.lineTo(lx + ew * 1.1, ly - eh * 2.15);
+    ctx.moveTo(rx + ew * 1.5, ry - eh * 1.45); ctx.lineTo(rx - ew * 1.1, ry - eh * 2.15);
+    ctx.stroke();
+  };
+  if (mode === "sleep") {
+    for (const [x, y] of [[lx, ly], [rx, ry]]) { ctx.beginPath(); ctx.arc(x, y - eh * 0.3, ew * 1.2, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); }
+  } else if (mode === "cry") {
+    // ≥ ≤：使劲闭着眼，微微发抖，眼角掉眼泪
+    const jx = Math.sin(S.t * 40) * R * 0.004, jy = Math.cos(S.t * 33) * R * 0.003;
+    ctx.lineWidth = R * 0.03;
+    for (const side of [-1, 1]) {
+      const x = (side < 0 ? lx : rx) + jx, y = (side < 0 ? ly : ry) + jy, s = -side; // s = 1 尖朝右（左眼），-1 尖朝左（右眼）
+      const outer = x - s * ew * 1.1, tip = x + s * ew * 0.95;
+      ctx.beginPath();
+      ctx.moveTo(outer, y - eh * 0.95); ctx.lineTo(tip, y - eh * 0.2); ctx.lineTo(outer, y + eh * 0.55);
+      ctx.moveTo(tip, y + eh * 0.5); ctx.lineTo(outer, y + eh * 1.25);
+      ctx.stroke();
+      // 眼泪
+      for (let i = 0; i < 2; i++) {
+        const ph = (S.t * 0.9 + i * 0.5 + (side > 0 ? 0.25 : 0)) % 1;
+        const tx = outer - s * ew * 0.2, ty = y + eh * 1.5 + ph * eh * 3.2, tr = R * 0.022 * (1 - ph * 0.4);
+        ctx.fillStyle = `rgba(150,196,240,${0.9 * (1 - ph)})`;
+        ctx.beginPath(); ctx.moveTo(tx, ty - tr * 1.8);
+        ctx.quadraticCurveTo(tx + tr * 1.1, ty, tx, ty + tr); ctx.quadraticCurveTo(tx - tr * 1.1, ty, tx, ty - tr * 1.8);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#111318";
+    }
+  } else if (mode === "squint") {
+    // 被捏、被挤的时候：紧紧闭眼，变成两条横线
+    ctx.lineWidth = R * 0.03; ctx.beginPath();
+    ctx.moveTo(lx - ew * 1.1, ly); ctx.lineTo(lx + ew * 1.1, ly);
+    ctx.moveTo(rx - ew * 1.1, ry); ctx.lineTo(rx + ew * 1.1, ry);
+    ctx.stroke();
+    if (S.stress >= CONFIG.SAD_AT) sadBrows();
+  } else if (mode === "sad") {
+    // 伤心：眼皮从外眼角往下耷拉，眼睛轻轻颤，眉毛往中间皱起
+    const k = S.blink > 0 ? 0.15 : 1, wob = Math.sin(S.t * 3) * eh * 0.04;
+    for (const side of [-1, 1]) {
+      const x = side < 0 ? lx : rx, y = (side < 0 ? ly : ry) + eh * 0.12 + wob, s = -side;
+      ctx.save();
+      ctx.beginPath(); // 只保留斜线下面的部分：外眼角低、内眼角高
+      ctx.moveTo(x - s * ew * 2, y - eh * 0.05); ctx.lineTo(x + s * ew * 2, y - eh * 0.85);
+      ctx.lineTo(x + s * ew * 2, y + eh * 2); ctx.lineTo(x - s * ew * 2, y + eh * 2); ctx.closePath();
+      ctx.clip();
+      ctx.beginPath(); ctx.ellipse(x, y, ew, eh * k, 0, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+    sadBrows();
+  } else {
+    const k = S.blink > 0 ? 0.15 : 1;
+    for (const [x, y] of [[lx, ly], [rx, ry]]) { ctx.beginPath(); ctx.ellipse(x, y, ew, eh * k, 0, 0, TAU); ctx.fill(); }
+  }
+  // 睡着的 Zzz
+  if (mode === "sleep") {
+    ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = `600 ${Math.round(R * 0.16)}px Fredoka, system-ui, sans-serif`;
+    const zt = (S.t % 3) / 3;
+    ctx.globalAlpha = 1 - zt; ctx.fillText("z", f.cx + R * 1.05 + zt * 20, f.cy - R * 0.7 - zt * 40);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawTie(x, y, R, rot, alpha) {
+  if (alpha <= 0) return;
+  ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.rotate(rot);
+  ctx.fillStyle = "#22396E";
+  ctx.beginPath(); ctx.moveTo(-0.06 * R, 0); ctx.lineTo(0.06 * R, 0); ctx.lineTo(0.04 * R, 0.07 * R); ctx.lineTo(-0.04 * R, 0.07 * R); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#2F4A8A";
+  ctx.beginPath(); ctx.moveTo(-0.04 * R, 0.07 * R); ctx.lineTo(0.04 * R, 0.07 * R); ctx.lineTo(0.075 * R, 0.27 * R); ctx.lineTo(0, 0.34 * R); ctx.lineTo(-0.075 * R, 0.27 * R); ctx.closePath(); ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = "#7A93CF"; ctx.lineWidth = R * 0.014;
+  ctx.beginPath(); for (let i = 0; i < 4; i++) { const yy = 0.1 * R + i * 0.07 * R; ctx.moveTo(-0.1 * R, yy); ctx.lineTo(0.1 * R, yy - 0.06 * R); } ctx.stroke();
+  ctx.restore(); ctx.restore();
+}
+
+function drawRain(f) {
+  const gy = groundY();
+  ctx.strokeStyle = S.night > 0.5 ? "rgba(190,210,245,0.8)" : "rgba(96,118,152,0.65)";
+  ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.beginPath();
+  for (const d of S.drops) { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 1.5, d.y + d.len); }
+  ctx.stroke();
+  for (const s of S.splashes) {
+    ctx.strokeStyle = `rgba(96,118,152,${0.5 * (1 - s.life / 0.4)})`;
+    ctx.beginPath(); ctx.ellipse(s.x, gy, 4 + s.life * 40, 1.5 + s.life * 8, 0, Math.PI, TAU); ctx.stroke();
+  }
+}
+function drawBolts() {
+  if (S.flash <= 0) return;
+  ctx.fillStyle = `rgba(255,255,255,${S.flash * 0.35})`; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = `rgba(255,244,190,${S.flash})`; ctx.lineWidth = 4; ctx.lineJoin = "round";
+  for (const b of S.bolts) { ctx.beginPath(); b.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); }
+}
+function drawFloaters() {
+  ctx.font = "600 17px Fredoka, 'Noto Sans SC', system-ui, sans-serif"; ctx.textAlign = "center";
+  for (const fl of S.floaters) {
+    ctx.fillStyle = `rgba(31,39,51,${1 - fl.life})`;
+    ctx.fillText(fl.text, fl.x, fl.y - fl.life * 50);
+  }
+  ctx.textAlign = "start";
+}
+function drawHands() {
+  ctx.font = "600 13px 'Noto Sans SC', system-ui, sans-serif"; ctx.textAlign = "center";
+  for (const h of hands) {
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    for (const k of [4, 8, 12, 16, 20]) { ctx.beginPath(); ctx.arc(h.pts[k][0], h.pts[k][1], 5, 0, TAU); ctx.fill(); }
+    ctx.strokeStyle = h.fist ? "#2F4A8A" : "rgba(255,255,255,0.9)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(h.palm[0], h.palm[1], h.fist ? 20 : 26, 0, TAU); ctx.stroke();
+    ctx.fillStyle = "#1F2733"; ctx.fillText(h.fist ? "Fist" : h.open ? "Palm" : "", h.palm[0], h.palm[1] + 5);
+  }
+  ctx.textAlign = "start";
+}
+
+// ================= 主循环 =================
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; S.t += dt;
+  detect();
+  if (hands.length) lookAt = hands.length === 2 ? [(hands[0].palm[0] + hands[1].palm[0]) / 2, (hands[0].palm[1] + hands[1].palm[1]) / 2] : hands[0].palm;
+  let f = cloudFrame();
+  const g = { target: 1, axis: S.def.a, dent: 0, active: false, follow: false };
+  if (S.phase === "charge") { handGestures(f, g, dt); mouseGestures(f, g); }
+  updateBody(dt);
+  if (S.body.mode === "fly") { g.active = true; S.react = Math.max(S.react, 0.1); }
+  else fistStarts.length = 0;
+  S.shake = Math.max(0, S.shake - dt * 4);
+  if (g.active) S.def.a = g.axis;
+  lastActive = g.active;
+  if (S.dent.hold > 0) { S.dent.hold -= dt; g.dent = Math.max(g.dent, 0.26); }
+  if (g.follow) { S.def.x = lerp(S.def.x, g.target, Math.min(1, dt * 25)); S.def.v = 0; } // 扯的时候紧跟手，没有延迟
+  else spring(S.def, g.target, 160, 9, dt); // 松手后像果冻一样弹回来
+  spring(S.dent, g.dent, 220, 14, dt);
+  spring(S.bounce, 0, 260, 10, dt);
+  S.react = Math.max(0, S.react - dt);
+  S.flash = Math.max(0, S.flash - dt * 2.5);
+  if (S.blink > 0) S.blink -= dt; else if ((S.nextBlink -= dt) <= 0) { S.blink = 0.14; S.nextBlink = 2 + Math.random() * 3; }
+
+  // 打雷：乌云值很高的时候
+  const s01 = S.stress / CONFIG.FULL;
+  S.thunderCool -= dt;
+  if (CONFIG.LIGHTNING && ((S.phase === "charge" && s01 > 0.7) || (S.phase === "rain" && S.rainT < 4)) && S.thunderCool <= 0 && Math.random() < dt * 0.6) {
+    S.flash = 1; S.thunderCool = 2.5;
+    let x = clamp(f.cx + (Math.random() - 0.5) * f.R, W * 0.15, W * 0.85), y = Math.min(f.cy + f.R * 0.6, groundY() - 180); const pts = [[x, y]];
+    for (let i = 0; i < 6; i++) { x += (Math.random() - 0.5) * f.R * 0.25; y += H * 0.04; pts.push([x, y]); }
+    S.bolts = [pts];
+  }
+
+  // 下雨
+  if (S.phase === "rain") {
+    S.rainT += dt;
+    S.stress = CONFIG.FULL * Math.max(0, 1 - S.rainT / CONFIG.RAIN_SECONDS);
+    S.puddle += dt / CONFIG.RAIN_SECONDS;
+    updateHUD();
+    const rate = 110 * (0.35 + 0.65 * (S.stress / CONFIG.FULL));
+    let n = rate * dt; while (n > 0) { if (Math.random() < n) S.drops.push({ x: clamp(f.cx + (Math.random() - 0.5) * f.R * 2.1 * S.def.x, 0, W), y: Math.min(f.cy + f.R * 0.55, groundY() - 140) + Math.random() * 20, vy: 620 + Math.random() * 280, len: 14 + Math.random() * 10 }); n -= 1; }
+    if (S.rainT >= CONFIG.RAIN_SECONDS) finishRain();
+  }
+  const gy = groundY();
+  for (const d of S.drops) { d.y += d.vy * dt; if (d.y + d.len >= gy) { d.dead = true; if (Math.random() < 0.35) S.splashes.push({ x: d.x, life: 0 }); } }
+  S.drops = S.drops.filter(d => !d.dead);
+  for (const s of S.splashes) s.life += dt; S.splashes = S.splashes.filter(s => s.life < 0.4);
+  for (const fl of S.floaters) fl.life += dt; S.floaters = S.floaters.filter(fl => fl.life < 1);
+
+  // 雨停 → 夜晚、摘下领带
+  if (S.phase === "clear") {
+    S.clearT += dt;
+    S.night = Math.min(1, S.night + dt / 2.5);
+    S.tieOff = Math.min(1, S.tieOff + dt / 1.5);
+    if (S.clearT > 2.5 && $("againBtn").hidden) $("againBtn").hidden = false;
+  } else {
+    S.night = Math.max(0, S.night - dt / 1.2);
+    S.puddle = S.phase === "rain" ? S.puddle : Math.max(0, S.puddle - dt / 1.5);
+  }
+  document.body.classList.toggle("night", S.night > 0.5);
+
+  f = cloudFrame();
+  drawBg(); drawGround(f); drawCloud(f); drawRain(f); drawBolts(); drawFloaters(); drawHands();
+  requestAnimationFrame(frame);
+}
+updateHUD();
+showMsg("Squeeze it, grab it, pull it, slam it.", 5);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
